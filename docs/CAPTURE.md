@@ -91,7 +91,7 @@ Each run:
 ## 6. Import on iPhone
 
 1. Open Kith and go to **Inbox → Import**.
-2. In the file picker, choose **iCloud Drive → Kith** and pick the newest `kith-capture-…` file. Importing an older or overlapping file is harmless, because messages are de-duplicated.
+2. In the file picker, open **iCloud Drive → Kith**. Tap the newest `kith-capture-…` file, or tap **Select** and choose several nights at once. They're imported oldest first, so a conversation that runs past 11pm is joined back together. Picking a file you've already imported is harmless: bundles and messages are de-duplicated, and anything that isn't a Kith capture is skipped and named.
 3. Enter the capture passphrase. You can let Kith remember it inside your encrypted vault.
 4. Review each conversation: add, edit or dismiss the suggested entries. When you finish a conversation, its message text is deleted.
 

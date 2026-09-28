@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyVault, newInteraction, newPerson } from '../domain/factory';
 import type { Vault } from '../domain/types';
-import { addSuggestion, assignSender, captureOf, finishConversation, forgetPerson, importBundle, skipSuggestion } from './inbox';
+import { addSuggestion, assignSender, captureOf, finishConversation, forgetPerson, importBundle, importBundles, skipSuggestion } from './inbox';
 import type { CaptureBundle, CapturedMessage } from './types';
 
 const AS_OF = '2026-09-10';
@@ -54,6 +54,20 @@ describe('import', () => {
     const again = importBundle(reviewed, bundle('b3', DAY5), AS_OF, NOW);
     expect(again.summary.duplicates).toBe(2);
     expect(captureOf(again.vault).pending).toHaveLength(0);
+  });
+
+  it('imports several nightly files together, oldest first, counting a stitched conversation once', () => {
+    const { vault } = setup();
+    const night1 = { ...bundle('n1', [m('d1', 'Sam Lee', 'you around?', at(7, 22, 50))]), from: at(7, 22, 50) };
+    const night2 = { ...bundle('n2', [m('d2', 'Sam Lee', "let's grab lunch tomorrow?", at(7, 23, 20)), m('j9', 'Jo', 'hi', at(8, 9))]), from: at(7, 23, 20) };
+    const already = importBundle(vault, bundle('old', DAY5), AS_OF, NOW).vault;
+
+    // Picked newest-first, as a file picker might return them, plus one already imported.
+    const r = importBundles(already, [night2, night1, bundle('old', DAY5)], AS_OF, NOW);
+    expect(r.summary).toMatchObject({ files: 3, alreadyImported: 1, conversations: 2, people: 2, unresolved: 1 });
+    const sam = captureOf(r.vault).pending.filter((p) => p.friend === 'Sam Lee');
+    expect(sam).toHaveLength(1);
+    expect(sam[0].messages.map((x) => x.guid)).toEqual(['d1', 'd2']);
   });
 
   it('extends a pending conversation that continues across the nightly cut-off, keeping review work', () => {

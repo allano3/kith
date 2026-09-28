@@ -172,6 +172,44 @@ export function importBundle(v: Vault, bundle: CaptureBundle, asOf: ISODate, now
   };
 }
 
+export interface BatchImportSummary {
+  /** Files processed, including ones imported before. */
+  files: number;
+  /** Files whose bundle id was imported before; skipped. */
+  alreadyImported: number;
+  /** New or extended conversations now awaiting review (each counted once, even if several files touched it). */
+  conversations: number;
+  /** Distinct friends among those conversations. */
+  people: number;
+  duplicates: number;
+  unresolved: number;
+  ignored: number;
+}
+
+/**
+ * Imports several nightly bundles at once, oldest first, so a conversation that
+ * runs across a nightly cut-off is stitched together in order.
+ */
+export function importBundles(v: Vault, bundles: CaptureBundle[], asOf: ISODate, now: string): { vault: Vault; summary: BatchImportSummary } {
+  const before = new Set(captureOf(v).pending);
+  const ordered = [...bundles].sort((a, b) => a.from.localeCompare(b.from) || a.createdAt.localeCompare(b.createdAt));
+  const summary: BatchImportSummary = { files: bundles.length, alreadyImported: 0, conversations: 0, people: 0, duplicates: 0, unresolved: 0, ignored: 0 };
+  let cur = v;
+  for (const b of ordered) {
+    const r = importBundle(cur, b, asOf, now);
+    cur = r.vault;
+    if (r.summary.alreadyImported) summary.alreadyImported++;
+    summary.duplicates += r.summary.duplicates;
+    summary.ignored += r.summary.ignored;
+  }
+  // Conversations created or extended by this batch are the ones not present, unchanged, before it.
+  const touched = captureOf(cur).pending.filter((p) => !before.has(p));
+  summary.conversations = touched.length;
+  summary.people = new Set(touched.map((t) => t.friend)).size;
+  summary.unresolved = touched.filter((t) => !t.personId).length;
+  return { vault: cur, summary };
+}
+
 /**
  * Matches a sender to a person (remembering an alias when the names differ), or
  * with `null` ignores the sender permanently and discards their pending text.

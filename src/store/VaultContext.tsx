@@ -5,9 +5,9 @@ import {
   editSuggestion,
   finishConversation,
   forgetPerson,
-  importBundle,
+  importBundles,
   skipSuggestion,
-  type ImportSummary,
+  type BatchImportSummary,
   type SuggestionPatch,
 } from '../capture/inbox';
 import type { CaptureBundle } from '../capture/types';
@@ -41,8 +41,8 @@ export interface VaultApi {
   exportSealed(): Promise<SealedVault>;
   /** Irreversibly deletes all local data. */
   destroy(): Promise<void>;
-  /** Adds a decrypted capture bundle to the inbox (deduped). */
-  importCapture(bundle: CaptureBundle): ImportSummary;
+  /** Adds decrypted capture bundles to the inbox (oldest first, deduped). */
+  importCapture(bundles: CaptureBundle[]): BatchImportSummary;
   /** Remembers (or with `undefined` forgets) the capture passphrase inside the encrypted vault. */
   setCapturePassphrase(passphrase: string | undefined): void;
   /** Matches a captured sender to a person, or with `null` ignores them permanently. */
@@ -187,10 +187,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setVault(emptyVault());
         setStatus('new');
       },
-      importCapture: (bundle) => {
+      importCapture: (bundles) => {
         const now = new Date().toISOString();
-        mutate((v) => importBundle(v, bundle, asOf, now).vault);
-        return importBundle(vault, bundle, asOf, now).summary;
+        mutate((v) => importBundles(v, bundles, asOf, now).vault);
+        return importBundles(vault, bundles, asOf, now).summary;
       },
       setCapturePassphrase: (passphrase) =>
         mutate((v) => {

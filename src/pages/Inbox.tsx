@@ -1,8 +1,8 @@
 import { useMemo, useState, type ChangeEvent, type SubmitEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { localDay, REQUEST_DOMAIN } from '../capture/extract';
-import { openPlans, type ImportSummary, type SuggestionPatch } from '../capture/inbox';
-import { isCaptureBundle } from '../capture/types';
+import { openPlans, type BatchImportSummary, type SuggestionPatch } from '../capture/inbox';
+import { isCaptureBundle, type CaptureBundle } from '../capture/types';
 import { emptyCapture, newPerson } from '../domain/factory';
 import { FOCUS_LABEL, INTERACTION_TYPE, REQUEST_KIND_LABEL } from '../domain/taxonomy';
 import type { Actor, CaptureSuggestion, PendingConversation, Person } from '../domain/types';
@@ -14,7 +14,12 @@ import './Inbox.css';
 
 type Message = { tone: 'positive' | 'concern' | 'neutral'; text: string } | null;
 
-type ImportState = { step: 'idle' } | { step: 'passphrase'; sealed: SealedVault; fileName: string; rememberedFailed: boolean };
+interface SealedFile {
+  name: string;
+  sealed: SealedVault;
+}
+
+type ImportState = { step: 'idle' } | { step: 'passphrase'; files: SealedFile[]; rememberedFailed: boolean; skipped: string[] };
 
 /** A request logged from the inbox that opened Pause & Reflect. */
 interface PauseNotice {
@@ -23,12 +28,39 @@ interface PauseNotice {
   name: string;
 }
 
-function summaryText(s: ImportSummary): string {
-  if (s.alreadyImported) return 'This file was already imported. Nothing new.';
+function summaryText(s: BatchImportSummary): string {
+  const fresh = s.files - s.alreadyImported;
+  if (!fresh) return s.files === 1 ? 'This file was already imported. Nothing new.' : 'These files were already imported. Nothing new.';
+  const files = s.files > 1 ? ` from ${plural(fresh, 'file')}` : '';
+  const again = s.alreadyImported ? ` ${num(s.alreadyImported, true)} ${s.alreadyImported === 1 ? 'file was' : 'files were'} already imported.` : '';
   const dupes = s.duplicates ? ` ${num(s.duplicates, true)} ${s.duplicates === 1 ? 'message was' : 'messages were'} already imported.` : '';
-  if (!s.conversations) return `Nothing new in this file.${dupes}`;
   const who = s.unresolved ? ` Choose who ${s.unresolved === 1 ? 'one conversation is' : `${s.unresolved} conversations are`} with below.` : '';
-  return `Added ${plural(s.conversations, 'conversation')} from ${plural(s.people, 'person', 'people')}.${dupes}${who}`;
+  if (!s.conversations) return `Nothing new${files}.${again}${dupes}`;
+  return `Added ${plural(s.conversations, 'conversation')} with ${plural(s.people, 'person', 'people')}${files}.${again}${dupes}${who}`;
+}
+
+/** Tries one passphrase on every file; the rest of the batch is not blocked by one bad file. */
+async function openFiles(files: SealedFile[], passphrase: string) {
+  const bundles: CaptureBundle[] = [];
+  const wrongPassphrase: SealedFile[] = [];
+  const notCaptures: string[] = [];
+  for (const f of files) {
+    try {
+      const { plaintext } = await unseal(f.sealed, passphrase);
+      let bundle: unknown = null;
+      try {
+        bundle = JSON.parse(plaintext);
+      } catch {
+        // falls through to the format check
+      }
+      if (isCaptureBundle(bundle)) bundles.push(bundle);
+      else notCaptures.push(f.name);
+    } catch (err) {
+      if (!(err instanceof WrongPassphraseError)) throw err;
+      wrongPassphrase.push(f);
+    }
+  }
+  return { bundles, wrongPassphrase, notCaptures };
 }
 
 export function Inbox() {
@@ -90,47 +122,45 @@ function ImportPanel() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
 
-  const open = async (sealed: SealedVault, passphrase: string, rememberIt: boolean) => {
-    const { plaintext } = await unseal(sealed, passphrase);
-    let bundle: unknown;
-    try {
-      bundle = JSON.parse(plaintext);
-    } catch {
-      bundle = null;
-    }
-    if (!isCaptureBundle(bundle)) throw new Error('This file opened, but it is not a Kith text capture.');
-    const summary = importCapture(bundle);
-    if (rememberIt && passphrase !== remembered) setCapturePassphrase(passphrase);
-    setImp({ step: 'idle' });
-    setPass('');
-    setMessage({ tone: summary.conversations ? 'positive' : 'neutral', text: summaryText(summary) });
+  /** Imports what opened; asks for a passphrase for what didn't; reports files that were skipped. */
+  const finish = (bundles: CaptureBundle[], stillLocked: SealedFile[], skipped: string[], rememberedFailed: boolean) => {
+    const parts: string[] = [];
+    if (bundles.length) parts.push(summaryText(importCapture(bundles)));
+    // While some files still await a passphrase, skipped names are carried forward and reported at the end.
+    if (skipped.length && !stillLocked.length) parts.push(`Skipped (not a Kith text capture): ${skipped.join(', ')}.`);
+    setMessage(parts.length ? { tone: skipped.length && !bundles.length ? 'concern' : bundles.length ? 'positive' : 'neutral', text: parts.join(' ') } : null);
+    setImp(stillLocked.length ? { step: 'passphrase', files: stillLocked, rememberedFailed, skipped } : { step: 'idle' });
   };
 
-  const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const onFiles = async (e: ChangeEvent<HTMLInputElement>) => {
+    const picked = [...(e.target.files ?? [])];
     e.target.value = '';
-    if (!file) return;
+    if (!picked.length) return;
     setMessage(null);
     setBusy(true);
     try {
-      let raw: unknown;
-      try {
-        raw = JSON.parse(await file.text());
-      } catch {
-        throw new Error('That file is not a Kith capture file.');
-      }
-      if (!isSealed(raw)) throw new Error('That file is not an encrypted Kith capture. Choose the file your Mac saved to iCloud Drive › Kith.');
-      if (remembered) {
+      const sealedFiles: SealedFile[] = [];
+      const skipped: string[] = [];
+      for (const file of picked) {
+        let raw: unknown = null;
         try {
-          await open(raw, remembered, false);
-          return;
-        } catch (err) {
-          if (!(err instanceof WrongPassphraseError)) throw err;
-          setImp({ step: 'passphrase', sealed: raw, fileName: file.name, rememberedFailed: true });
-          return;
+          raw = JSON.parse(await file.text());
+        } catch {
+          // not JSON; reported below
         }
+        if (isSealed(raw)) sealedFiles.push({ name: file.name, sealed: raw });
+        else skipped.push(file.name);
       }
-      setImp({ step: 'passphrase', sealed: raw, fileName: file.name, rememberedFailed: false });
+      if (!sealedFiles.length) {
+        setMessage({ tone: 'concern', text: 'None of those are encrypted Kith text captures. Choose the files your Mac saved to iCloud Drive › Kith.' });
+        return;
+      }
+      if (remembered) {
+        const r = await openFiles(sealedFiles, remembered);
+        finish(r.bundles, r.wrongPassphrase, [...skipped, ...r.notCaptures], true);
+      } else {
+        finish([], sealedFiles, skipped, false);
+      }
     } catch (err) {
       setImp({ step: 'idle' });
       setMessage({ tone: 'concern', text: err instanceof Error ? err.message : String(err) });
@@ -145,30 +175,37 @@ function ImportPanel() {
     setBusy(true);
     setMessage(null);
     try {
-      await open(imp.sealed, pass, remember);
+      const r = await openFiles(imp.files, pass);
+      if (!r.bundles.length && !r.notCaptures.length) {
+        setMessage({ tone: 'concern', text: 'That passphrase does not open these files. Use the capture passphrase you set on your Mac.' });
+        return;
+      }
+      if (remember && pass !== remembered) setCapturePassphrase(pass);
+      setPass('');
+      finish(r.bundles, r.wrongPassphrase, [...imp.skipped, ...r.notCaptures], false);
     } catch (err) {
-      setMessage({
-        tone: 'concern',
-        text: err instanceof WrongPassphraseError ? 'That passphrase does not open this file. Use the capture passphrase you set on your Mac.' : err instanceof Error ? err.message : String(err),
-      });
+      setMessage({ tone: 'concern', text: err instanceof Error ? err.message : String(err) });
     } finally {
       setBusy(false);
     }
   };
+
+  const lockedNames = imp.step === 'passphrase' ? imp.files.map((f) => f.name) : [];
 
   return (
     <section className="card stack">
       <div className="row">
         <label className={`btn inbox-file ${busy || imp.step !== 'idle' ? 'is-disabled' : ''}`}>
           {busy && imp.step === 'idle' ? 'Opening…' : 'Import captured texts'}
-          <input type="file" accept=".json,application/json" disabled={busy || imp.step !== 'idle'} onChange={(e) => void onFile(e)} />
+          <input type="file" multiple accept=".json,application/json" disabled={busy || imp.step !== 'idle'} onChange={(e) => void onFiles(e)} />
         </label>
       </div>
+      <p className="faint inbox-note">You can select several nightly files at once — tap Select in the file picker. Files already imported are skipped.</p>
       {imp.step === 'passphrase' && (
         <form className="callout stack" onSubmit={(e) => void submit(e)}>
           <p>
             {imp.rememberedFailed ? 'The remembered passphrase did not open ' : 'Enter the capture passphrase for '}
-            <strong>{imp.fileName}</strong>
+            <strong>{lockedNames.length === 1 ? lockedNames[0] : `${plural(lockedNames.length, 'file')}`}</strong>
             {imp.rememberedFailed ? '. Enter the capture passphrase set on your Mac.' : '.'}
           </p>
           <label className="field">
@@ -416,7 +453,7 @@ function SetupHelp() {
             it Full Disk Access so it can read Messages.
           </li>
           <li>Each night at 11pm it saves an encrypted file to iCloud Drive › Kith.</li>
-          <li>Here, tap “Import captured texts”, pick the newest file in Files, and enter the capture passphrase.</li>
+          <li>Here, tap “Import captured texts”, select one or more files in Files, and enter the capture passphrase.</li>
         </ol>
       </Empty>
     </Section>
