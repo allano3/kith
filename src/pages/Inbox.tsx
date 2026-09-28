@@ -200,7 +200,7 @@ function ImportPanel() {
           <input type="file" multiple accept=".json,application/json" disabled={busy || imp.step !== 'idle'} onChange={(e) => void onFiles(e)} />
         </label>
       </div>
-      <p className="faint inbox-note">You can select several nightly files at once — tap Select in the file picker. Files already imported are skipped.</p>
+      <p className="faint inbox-note">You can select several capture files at once — tap Select in the file picker. Files already imported are skipped.</p>
       {imp.step === 'passphrase' && (
         <form className="callout stack" onSubmit={(e) => void submit(e)}>
           <p>
@@ -449,10 +449,10 @@ function SetupHelp() {
       <Empty quote="Captured conversations will appear here for you to review.">
         <ol className="inbox-steps">
           <li>
-            On your Mac, set up the nightly capture described in <code>docs/CAPTURE.md</code>: choose the friends to include and a capture passphrase, and give
+            On your Mac, set up the text capture described in <code>docs/CAPTURE.md</code>: choose the friends to include and a capture passphrase, and give
             it Full Disk Access so it can read Messages.
           </li>
-          <li>Each night at 11pm it saves an encrypted file to iCloud Drive › Kith.</li>
+          <li>On the schedule you choose (daily, or once a week) it saves an encrypted file to iCloud Drive › Kith.</li>
           <li>Here, tap “Import captured texts”, select one or more files in Files, and enter the capture passphrase.</li>
         </ol>
       </Empty>

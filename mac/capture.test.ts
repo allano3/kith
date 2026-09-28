@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isCaptureBundle, type CaptureBundle } from '../src/capture/types.ts';
 import { isSealed, unseal } from '../src/store/crypto.ts';
-import { friendIndex, loadState, resolveFriends, runCapture, type CaptureConfig, type CapturePaths, type RunOptions } from './capture.ts';
+import { DEFAULT_SCHEDULE, friendIndex, loadState, resolveFriends, runCapture, type CaptureConfig, type CapturePaths, type RunOptions } from './capture.ts';
 import { messagesDb, type MessagesDb } from './fixtures.ts';
 import { readMessages } from './messages.ts';
 
@@ -38,6 +38,7 @@ beforeEach(() => {
     includeGroupChats: false,
     outputDir: join(dir, 'iCloud/Kith'),
     retentionDays: 14,
+    schedule: DEFAULT_SCHEDULE,
   };
 
   db = messagesDb();
@@ -185,5 +186,15 @@ describe('runCapture', () => {
     expect(readdirSync(config.outputDir).sort()).toEqual(
       ['kith-2026-09-01.json', 'kith-capture-2026-09-20-abc123.json', result.bundleFile!.split('/').pop()!, 'notes.txt'].sort(),
     );
+  });
+
+  it('a weekly schedule reads the past week on its first run and keeps bundles at least three weeks', { timeout: 30_000 }, async () => {
+    config = { ...config, schedule: { every: 'week', weekday: 'sunday', time: '23:00' } };
+    mkdirSync(config.outputDir, { recursive: true });
+    for (const name of ['kith-capture-2026-09-01-abc123.json', 'kith-capture-2026-09-10-abc123.json']) writeFileSync(join(config.outputDir, name), '{}');
+    const result = await capture();
+    expect((await openBundle(result.bundleFile!)).messages.map((m) => m.guid)).toContain(g.old);
+    // 26 days old is past three weeks; 17 days old is past retentionDays (14) but within three weekly runs.
+    expect(result.pruned).toEqual(['kith-capture-2026-09-01-abc123.json']);
   });
 });

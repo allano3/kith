@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
+import { timeParts, WEEKDAYS, type Schedule } from './capture.ts';
 
 const SECURITY = '/usr/bin/security';
 const LAUNCHCTL = '/bin/launchctl';
@@ -58,9 +59,12 @@ export const plistPath = (): string => join(homedir(), 'Library/LaunchAgents', `
 
 const xml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** LaunchAgent that runs `run` daily at 23:00 (or at next wake if the Mac was asleep). */
-export function buildPlist(p: { node: string; script: string; workingDir: string; log: string }): string {
+/** LaunchAgent that runs `run` on the schedule (or at next wake if the Mac was asleep at that time). */
+export function buildPlist(p: { node: string; script: string; workingDir: string; log: string; schedule: Schedule }): string {
   const args = [p.node, '--experimental-strip-types', '--disable-warning=ExperimentalWarning', p.script, 'run'];
+  const { hour, minute } = timeParts(p.schedule.time)!;
+  // launchd: Weekday 0 = Sunday … 6 = Saturday; omitted = every day.
+  const weekday = p.schedule.every === 'week' ? `\n    <key>Weekday</key>\n    <integer>${WEEKDAYS.indexOf(p.schedule.weekday)}</integer>` : '';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -74,11 +78,11 @@ ${args.map((a) => `    <string>${xml(a)}</string>`).join('\n')}
   <key>WorkingDirectory</key>
   <string>${xml(p.workingDir)}</string>
   <key>StartCalendarInterval</key>
-  <dict>
+  <dict>${weekday}
     <key>Hour</key>
-    <integer>23</integer>
+    <integer>${hour}</integer>
     <key>Minute</key>
-    <integer>0</integer>
+    <integer>${minute}</integer>
   </dict>
   <key>StandardOutPath</key>
   <string>${xml(p.log)}</string>

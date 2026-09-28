@@ -1,7 +1,7 @@
 /**
  * Contract between the Mac capture script (mac/kith-capture.ts) and the app.
  *
- * The Mac script reads Messages' chat.db nightly, keeps only 1:1 conversations
+ * The Mac script reads Messages' chat.db on a daily or weekly schedule, keeps only 1:1 conversations
  * with the friends listed in its config, and writes a CaptureBundle sealed with
  * the same format as vault backups (src/store/crypto.ts `seal`), using a
  * separate capture passphrase. The app imports it into a review inbox; message

@@ -29,7 +29,7 @@ Your data is tied to this web address. If the app ever moves to a different addr
 
 ## Capturing texts from your Mac
 
-A nightly script on your Mac (23:00, via launchd) reads Messages **read-only**. It keeps only 1:1 conversations with the friends you list, and writes an encrypted file to iCloud Drive › Kith. On the phone, go to **Inbox → Import captured texts**. Kith *suggests* entries such as "cancelled plans, proposed another time" or "asked to borrow money". You add or skip each one. The message text is deleted once you've reviewed the conversation, and Kith never shows or analyses reply times.
+A script on your Mac, scheduled with launchd (daily at 23:00 by default, or weekly with `install --weekly`), reads Messages **read-only**. It keeps only 1:1 conversations with the friends you list, and writes an encrypted file to iCloud Drive › Kith. On the phone, go to **Inbox → Import captured texts**. Kith *suggests* entries such as "cancelled plans, proposed another time" or "asked to borrow money". You add or skip each one. The message text is deleted once you've reviewed the conversation, and Kith never shows or analyses reply times.
 
 Setup takes about five minutes and needs Full Disk Access for the Node binary. See [docs/CAPTURE.md](docs/CAPTURE.md).
 
@@ -69,6 +69,6 @@ src/store      AES-GCM vault encryption, IndexedDB persistence, React vault cont
 src/ai         local analyst, evidence packet (pseudonymization), optional model client
 src/capture    capture bundle contract, suggestion extraction, inbox import/review logic
 src/pages      screens; src/ui shared components; src/styles.css design system; src/pwa.ts install/offline helpers
-mac/           nightly Messages capture (Node + /usr/bin/sqlite3, Keychain, launchd)
+mac/           scheduled Messages capture (daily or weekly) (Node + /usr/bin/sqlite3, Keychain, launchd)
 public/        web app manifest, icons, offline service worker
 ```

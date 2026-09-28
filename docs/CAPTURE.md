@@ -1,6 +1,6 @@
 # Capturing texts from your Mac
 
-Kith can suggest log entries from your text conversations. A small script on your Mac runs every night at 23:00. It reads the Messages database, keeps only one-to-one conversations with the friends you list, and writes an **encrypted** file to your iCloud Drive. On your iPhone, you import that file into Kith's **Inbox**. You review each conversation there, and nothing is logged until you tap to add it.
+Kith can suggest log entries from your text conversations. A small script on your Mac runs on a schedule you choose: daily at 23:00 by default, or once a week. It reads the Messages database, keeps only one-to-one conversations with the friends you list, and writes an **encrypted** file to your iCloud Drive. On your iPhone, you import that file into Kith's **Inbox**. You review each conversation there, and nothing is logged until you tap to add it.
 
 ## What it reads, and what it doesn't
 
@@ -32,14 +32,14 @@ This creates `~/.kith/` (readable only by you) and a starter `~/.kith/capture.js
 
 ## 2. Grant Full Disk Access
 
-macOS protects Messages and Contacts. The nightly job runs as the Node binary, so that binary needs Full Disk Access:
+macOS protects Messages and Contacts. The scheduled job runs as the Node binary, so that binary needs Full Disk Access:
 
 1. Run `npm run capture -- status`. It prints the exact path to grant, for example `/opt/homebrew/Cellar/node/23.3.0/bin/node`. This is the real file behind Homebrew's `/opt/homebrew/bin/node` link.
 2. Open **System Settings → Privacy & Security → Full Disk Access**.
 3. Click **+**, press **Cmd-Shift-G**, paste that path, press Return, then click **Open**.
 4. Make sure its switch is **on**.
 
-When you run commands yourself in a terminal (`friends`, `run --dry-run`, `status`), macOS checks the **terminal app** (Terminal, iTerm, VS Code…) rather than Node. To use those commands with real data, grant the terminal app too. You can switch that off again afterwards; the nightly job only needs the Node binary.
+When you run commands yourself in a terminal (`friends`, `run --dry-run`, `status`), macOS checks the **terminal app** (Terminal, iTerm, VS Code…) rather than Node. To use those commands with real data, grant the terminal app too. You can switch that off again afterwards; the scheduled job only needs the Node binary.
 
 After `brew upgrade node`, the path changes. Grant the new path and run `npm run capture -- install` again (`status` warns you when they differ).
 
@@ -75,23 +75,29 @@ npm run capture -- run --since 2026-09-01     # writes a bundle covering that ra
 ## 5. Schedule it
 
 ```bash
-npm run capture -- install
+npm run capture -- install                         # daily at 23:00
+npm run capture -- install --weekly                # Sundays at 23:00
+npm run capture -- install --weekly --day friday --at 20:00
 ```
 
-This writes `~/Library/LaunchAgents/com.kith.capture.plist` and loads it. The job runs daily at **23:00**. If the Mac is asleep at 23:00, macOS runs it when the Mac next wakes. If the Mac is shut down at 23:00, that night is skipped, and the next run catches up, because each run starts after the last message it processed. The Mac must be logged in for the Keychain to be available.
+This writes `~/Library/LaunchAgents/com.kith.capture.plist` and loads it. The schedule you choose is saved in `capture.json`, so running `install` again without options keeps it. To switch back, run `install --daily`.
+
+If the Mac is asleep at the scheduled time, macOS runs the job when the Mac next wakes. If the Mac is shut down then, that run is skipped. The next run catches up, because each run starts after the last message it processed. Nothing is lost between runs, whether they're a day or a week apart. The Mac must be logged in for the Keychain to be available.
+
+A weekly run produces one file covering the whole week, so importing on the phone is one file a week.
 
 Each run:
 
-1. Reads messages newer than the saved progress marker.
+1. Reads messages newer than the saved progress marker. The very first run reads back one interval (the past day, or the past week).
 2. Writes `kith-capture-YYYY-MM-DD-xxxxxx.json` to `iCloud Drive/Kith/`.
 3. Saves the new progress marker, but only after the file is written. If nothing matched, no file is written and the marker still moves forward.
-4. Deletes its own bundles older than `retentionDays`.
+4. Deletes its own bundles older than `retentionDays`, but always keeps at least three runs' worth (21 days on a weekly schedule), so a file isn't deleted before you've had a chance to import it.
 5. Appends one line of counts to `~/.kith/capture.log`.
 
 ## 6. Import on iPhone
 
 1. Open Kith and go to **Inbox → Import**.
-2. In the file picker, open **iCloud Drive → Kith**. Tap the newest `kith-capture-…` file, or tap **Select** and choose several nights at once. They're imported oldest first, so a conversation that runs past 11pm is joined back together. Picking a file you've already imported is harmless: bundles and messages are de-duplicated, and anything that isn't a Kith capture is skipped and named.
+2. In the file picker, open **iCloud Drive → Kith**. Tap the newest `kith-capture-…` file, or tap **Select** and choose several at once. They're imported oldest first, so a conversation that runs past the scheduled time is joined back together. Picking a file you've already imported is harmless: bundles and messages are de-duplicated, and anything that isn't a Kith capture is skipped and named.
 3. Enter the capture passphrase. You can let Kith remember it inside your encrypted vault.
 4. Review each conversation: add, edit or dismiss the suggested entries. When you finish a conversation, its message text is deleted.
 
@@ -106,7 +112,8 @@ Each run:
   "includeSent": true,
   "includeGroupChats": false,
   "outputDir": "~/Library/Mobile Documents/com~apple~CloudDocs/Kith",
-  "retentionDays": 14
+  "retentionDays": 14,
+  "schedule": { "every": "week", "weekday": "sunday", "time": "23:00" }
 }
 ```
 
@@ -118,11 +125,12 @@ Each run:
 | `includeSent` | Include your own messages in those conversations. If you turn this off, Kith can't tell who got in touch first, which skews reciprocity. |
 | `includeGroupChats` | Include group chats that contain a listed friend. Only messages *from* listed friends are taken, because your own group messages aren't addressed to one person. This brings in other people's context, so it's off by default. |
 | `outputDir` | Where bundles go. |
-| `retentionDays` | Delete this script's bundles older than this many days. Set it to `0` to keep them all. |
+| `retentionDays` | Delete this script's bundles older than this many days (never fewer than three runs' worth). Set it to `0` to keep them all. |
+| `schedule` | `every`: `"day"` or `"week"`; `weekday`: used when weekly (`"sunday"`…`"saturday"`); `time`: 24-hour `"HH:MM"`. Set it with `install --daily/--weekly/--day/--at`. If you edit it by hand, run `install` again; `status` warns when the installed job doesn't match. Defaults to daily at 23:00. |
 
 ## Troubleshooting
 
-`npm run capture -- status` shows the config, whether a passphrase is in the Keychain, the last run, whether Messages and Contacts are readable, and whether the nightly job is loaded.
+`npm run capture -- status` shows the config and schedule, whether a passphrase is in the Keychain, the last run, whether Messages and Contacts are readable, and whether the scheduled job is loaded and matches the config.
 
 | Symptom | Fix |
 |---|---|
@@ -136,7 +144,7 @@ Each run:
 ## Uninstall and clean up
 
 ```bash
-npm run capture -- uninstall                                  # stop and remove the nightly job
+npm run capture -- uninstall                                  # stop and remove the scheduled job
 security delete-generic-password -s kith-capture              # remove the Keychain item
 rm -rf ~/.kith                                                # config, progress marker, log
 rm ~/Library/Mobile\ Documents/com~apple~CloudDocs/Kith/kith-capture-*.json   # remaining bundles

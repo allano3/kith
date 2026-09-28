@@ -15,6 +15,20 @@ export interface FriendConfig {
   handles?: string[];
 }
 
+export const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+export type Weekday = (typeof WEEKDAYS)[number];
+
+/** When the capture job runs. launchd runs a missed slot at the next wake. */
+export interface Schedule {
+  every: 'day' | 'week';
+  /** Used when `every` is "week". */
+  weekday: Weekday;
+  /** 24-hour "HH:MM", local time. */
+  time: string;
+}
+
+export const DEFAULT_SCHEDULE: Schedule = { every: 'day', weekday: 'sunday', time: '23:00' };
+
 export interface CaptureConfig {
   friends: FriendConfig[];
   includeSent: boolean;
@@ -22,6 +36,7 @@ export interface CaptureConfig {
   outputDir: string;
   /** Bundles this script wrote more than this many days ago are deleted. 0 keeps them all. */
   retentionDays: number;
+  schedule: Schedule;
 }
 
 export interface CaptureState {
@@ -56,7 +71,45 @@ export const DEFAULT_CONFIG: CaptureConfig = {
   includeGroupChats: false,
   outputDir: '~/Library/Mobile Documents/com~apple~CloudDocs/Kith',
   retentionDays: 14,
+  schedule: DEFAULT_SCHEDULE,
 };
+
+/** Validates a schedule, filling missing fields from the default. */
+export function parseSchedule(raw: unknown): Schedule {
+  if (raw === undefined) return { ...DEFAULT_SCHEDULE };
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new ConfigError('"schedule" must be an object.');
+  const s = { ...DEFAULT_SCHEDULE, ...(raw as Partial<Schedule>) };
+  if (s.every !== 'day' && s.every !== 'week') throw new ConfigError('"schedule.every" must be "day" or "week".');
+  s.weekday = String(s.weekday).toLowerCase() as Weekday;
+  if (!WEEKDAYS.includes(s.weekday)) throw new ConfigError(`"schedule.weekday" must be one of: ${WEEKDAYS.join(', ')}.`);
+  if (!timeParts(s.time)) throw new ConfigError('"schedule.time" must be a 24-hour time like "23:00".');
+  return s;
+}
+
+export function timeParts(time: string): { hour: number; minute: number } | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(time).trim());
+  if (!m) return null;
+  const hour = Number(m[1]);
+  const minute = Number(m[2]);
+  return hour <= 23 && minute <= 59 ? { hour, minute } : null;
+}
+
+export function scheduleIntervalDays(s: Schedule): number {
+  return s.every === 'week' ? 7 : 1;
+}
+
+export function describeSchedule(s: Schedule): string {
+  const day = s.weekday[0].toUpperCase() + s.weekday.slice(1);
+  return s.every === 'week' ? `weekly on ${day} at ${s.time}` : `daily at ${s.time}`;
+}
+
+/**
+ * Bundles are kept at least three runs' worth, so a weekly schedule never
+ * deletes a file before there has been a fair chance to import it.
+ */
+export function effectiveRetentionDays(config: CaptureConfig): number {
+  return config.retentionDays > 0 ? Math.max(config.retentionDays, 3 * scheduleIntervalDays(config.schedule)) : 0;
+}
 
 export function expandHome(p: string, home = homedir()): string {
   return p === '~' ? home : p.startsWith('~/') ? join(home, p.slice(2)) : p;
@@ -73,6 +126,7 @@ export function parseConfig(json: string): CaptureConfig {
   }
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new ConfigError('capture.json must be a JSON object.');
   const c = { ...DEFAULT_CONFIG, ...(raw as Partial<CaptureConfig>) };
+  c.schedule = parseSchedule((raw as Partial<CaptureConfig>).schedule);
   if (!Array.isArray(c.friends)) throw new ConfigError('"friends" must be a list.');
   const names = new Set<string>();
   for (const f of c.friends) {
@@ -201,9 +255,10 @@ export async function runCapture(opts: RunOptions): Promise<RunResult> {
   const { config, paths, now } = opts;
   const previous = loadState(paths.stateFile);
   // --since re-reads from a date regardless of state; the app dedupes by message GUID.
-  // A first run with neither reads the last 24 hours.
+  // A first run with neither reads one schedule interval back (a day, or a week).
   const afterRowId = opts.since ? 0 : (previous?.lastRowId ?? 0);
-  const since = opts.since ?? (previous ? undefined : new Date(now.getTime() - 24 * 3600_000));
+  const firstWindowMs = scheduleIntervalDays(config.schedule) * 24 * 3600_000;
+  const since = opts.since ?? (previous ? undefined : new Date(now.getTime() - firstWindowMs));
   const { highRowId, messages } = readMessages(paths.chatDb, {
     afterRowId,
     since,
@@ -234,7 +289,7 @@ export async function runCapture(opts: RunOptions): Promise<RunResult> {
   // Only now is it safe to move past these messages.
   mkdirSync(paths.kithDir, { recursive: true, mode: 0o700 });
   writePrivateFile(paths.stateFile, `${JSON.stringify({ lastRowId, lastRun: now.toISOString() } satisfies CaptureState)}\n`);
-  const pruned = pruneBundles(outputDir, config.retentionDays, now);
+  const pruned = pruneBundles(outputDir, effectiveRetentionDays(config), now);
   return { messages: messages.length, perFriend, bundleFile, pruned, lastRowId };
 }
 

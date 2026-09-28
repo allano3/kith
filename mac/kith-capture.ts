@@ -3,7 +3,8 @@
  * friends listed in ~/.kith/capture.json, and writes an encrypted bundle to iCloud
  * Drive for the Kith app's Inbox. See docs/CAPTURE.md.
  *
- *   npm run capture -- setup | friends [add|remove] | run [--since YYYY-MM-DD] [--dry-run] | install | uninstall | status
+ *   npm run capture -- setup | friends [add|remove] | run [--since YYYY-MM-DD] [--dry-run]
+ *                     | install [--daily | --weekly] [--day <weekday>] [--at HH:MM] | uninstall | status
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -13,14 +14,18 @@ import {
   ConfigError,
   DEFAULT_CONFIG,
   defaultPaths,
+  describeSchedule,
+  effectiveRetentionDays,
   expandHome,
   loadConfig,
   loadState,
+  parseSchedule,
   resolveFriends,
   runCapture,
   saveConfig,
   summaryLine,
   type CaptureConfig,
+  type Schedule,
 } from './capture.ts';
 import { ContactMatchError, resolveContact } from './contacts.ts';
 import { DbError, queryRows } from './sqlite.ts';
@@ -77,7 +82,7 @@ function fullDiskAccessHelp(): string {
     '  2. Click +, press Cmd-Shift-G and paste:',
     `       ${node}`,
     '     then click Open and make sure its switch is on.',
-    '  The nightly job runs as that node binary. When you run commands by hand from a',
+    '  The scheduled job runs as that node binary. When you run commands by hand from a',
     '  terminal, macOS checks the terminal app instead (Terminal, iTerm, VS Code…), so grant',
     '  it too if you want to use `friends` or `run --dry-run` interactively.',
     '  After `brew upgrade node` the path changes: grant the new one and run `install` again.',
@@ -140,7 +145,8 @@ Next steps:
   2. Add friends, using the same name as in Kith:
        npm run capture -- friends add "Sarah" --contact "Sarah Whitfield"
   3. Check what would be captured:   npm run capture -- run --dry-run
-  4. Schedule it nightly at 23:00:   npm run capture -- install`);
+  4. Schedule it:                    npm run capture -- install            (daily at 23:00)
+                                     npm run capture -- install --weekly   (Sundays at 23:00)`);
 }
 
 function friendsList(config: CaptureConfig): void {
@@ -218,16 +224,32 @@ async function run(args: string[]): Promise<void> {
   console.log(summaryLine(result, now, dryRun));
 }
 
-function install(): void {
+/** Applies `--daily | --weekly`, `--day`, `--at` on top of the configured schedule. */
+function scheduleFromFlags(current: Schedule, flags: Record<string, string[]>): Schedule {
+  if (flags.daily && (flags.weekly || flags.day)) throw new UsageError('--daily cannot be combined with --weekly or --day.');
+  const every = flags.weekly || flags.day ? 'week' : flags.daily ? 'day' : current.every;
+  try {
+    return parseSchedule({ every, weekday: flags.day?.at(-1) ?? current.weekday, time: flags.at?.at(-1) ?? current.time });
+  } catch (e) {
+    throw new UsageError((e as Error).message.replace('"schedule.weekday"', '--day').replace('"schedule.time"', '--at'));
+  }
+}
+
+function install(args: string[]): void {
+  const { positional, flags } = parseArgs(args, ['daily', 'weekly']);
+  if (positional.length) throw new UsageError('Usage: install [--daily | --weekly] [--day <weekday>] [--at HH:MM]');
+  const config = loadOrDefaultConfig();
+  const schedule = scheduleFromFlags(config.schedule, flags);
   ensureKithDir();
+  if (JSON.stringify(schedule) !== JSON.stringify(config.schedule) || !existsSync(paths.configFile)) saveConfig(paths.configFile, { ...config, schedule });
   const node = resolvedNode();
   mkdirSync(dirname(plistPath()), { recursive: true });
-  writeFileSync(plistPath(), buildPlist({ node, script: SCRIPT, workingDir: REPO, log: paths.logFile }), { mode: 0o644 });
+  writeFileSync(plistPath(), buildPlist({ node, script: SCRIPT, workingDir: REPO, log: paths.logFile, schedule }), { mode: 0o644 });
   const loaded = loadAgent();
   if (!loaded.ok) throw new Error(`Wrote ${plistPath()} but launchctl could not load it: ${loaded.output}`);
-  console.log(`Installed ${plistPath()}: runs nightly at 23:00 (or at next wake if the Mac is asleep then).`);
+  console.log(`Installed ${plistPath()}: runs ${describeSchedule(schedule)} (or at next wake if the Mac is asleep then).`);
+  console.log('Each run picks up everything since the previous one, so nothing is missed between runs.');
   console.log(`Log: ${paths.logFile}`);
-  if (!existsSync(paths.configFile)) console.log('Warning: no config yet. Run: npm run capture -- setup');
   if (!hasPassphrase()) console.log('Warning: no capture passphrase in the Keychain. Run: npm run capture -- setup');
   console.log(`Make sure ${node} has Full Disk Access (npm run capture -- status checks).`);
 }
@@ -236,7 +258,7 @@ function uninstall(): void {
   const unloaded = unloadAgent();
   const existed = existsSync(plistPath());
   rmSync(plistPath(), { force: true });
-  console.log(existed || unloaded.ok ? `Removed the nightly job (${plistPath()}).` : 'The nightly job was not installed.');
+  console.log(existed || unloaded.ok ? `Removed the scheduled job (${plistPath()}).` : 'The scheduled job was not installed.');
   console.log(`Kept: ${paths.kithDir} (config, state, log), the Keychain item "kith-capture", and bundles in iCloud Drive. See docs/CAPTURE.md to remove them.`);
 }
 
@@ -250,7 +272,9 @@ function status(): void {
     line('Includes', `${config.includeSent ? 'received + sent' : 'received only'}; group chats ${config.includeGroupChats ? 'on' : 'off'}`);
     const out = expandHome(config.outputDir);
     line('Output folder', `${out}${existsSync(out) ? '' : ' (will be created on first bundle)'}`);
-    line('Retention', config.retentionDays > 0 ? `${config.retentionDays} days` : 'keep all bundles');
+    const keep = effectiveRetentionDays(config);
+    line('Retention', keep > 0 ? `${keep} days${keep !== config.retentionDays ? ` (at least three runs; configured ${config.retentionDays})` : ''}` : 'keep all bundles');
+    line('Schedule', describeSchedule(config.schedule));
   } catch (e) {
     line('Config', explain(e));
   }
@@ -283,11 +307,15 @@ function status(): void {
   }
 
   const node = resolvedNode();
-  if (!existsSync(plistPath())) line('Nightly job', 'not installed (run install)');
+  if (!existsSync(plistPath())) line('Scheduled job', 'not installed (run install)');
   else {
     const plist = readFileSync(plistPath(), 'utf8');
     const plistNode = /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]*)<\/string>/.exec(plist)?.[1];
-    line('Nightly job', `${agentLoaded() ? 'loaded' : 'installed but NOT loaded (run install again)'}; 23:00 daily`);
+    const installed = config && plist === buildPlist({ node: plistNode ?? node, script: SCRIPT, workingDir: REPO, log: paths.logFile, schedule: config.schedule });
+    line(
+      'Scheduled job',
+      `${agentLoaded() ? 'loaded' : 'installed but NOT loaded (run install again)'}${installed ? '' : '; schedule differs from capture.json (run install again)'}`,
+    );
     if (plistNode && plistNode !== node)
       line('', `uses ${plistNode}${existsSync(plistNode) ? '' : ' (missing)'}; current node is ${node}. Run install again and grant Full Disk Access to the new path.`);
   }
@@ -296,14 +324,17 @@ function status(): void {
   if (blocked) console.log(`\n${fullDiskAccessHelp()}`);
 }
 
-const HELP = `Kith capture — nightly Messages → Kith Inbox bundles (see docs/CAPTURE.md)
+const HELP = `Kith capture — Messages → Kith Inbox bundles, daily or weekly (see docs/CAPTURE.md)
 
   npm run capture -- setup                    create ~/.kith and store the capture passphrase
   npm run capture -- friends                  list friends and the handles each resolves to
   npm run capture -- friends add "<Kith name>" [--contact "<Contacts name>"] [--handle <phone|email>]…
   npm run capture -- friends remove "<Kith name>"
   npm run capture -- run [--since YYYY-MM-DD] [--dry-run]
-  npm run capture -- install | uninstall      schedule / unschedule the 23:00 job
+  npm run capture -- install [--daily | --weekly] [--day <weekday>] [--at HH:MM]
+                                              schedule the job (default daily at 23:00;
+                                              --weekly defaults to Sunday; the choice is saved)
+  npm run capture -- uninstall                remove the scheduled job
   npm run capture -- status`;
 
 async function main(): Promise<void> {
@@ -316,7 +347,7 @@ async function main(): Promise<void> {
     case 'run':
       return run(rest);
     case 'install':
-      return install();
+      return install(rest);
     case 'uninstall':
       return uninstall();
     case 'status':

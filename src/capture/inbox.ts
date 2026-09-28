@@ -93,7 +93,7 @@ function isMessage(m: unknown): m is CapturedMessage {
 /**
  * Adds a bundle's messages to the inbox. Skips bundles already imported,
  * messages already pending or reviewed, and ignored senders. New messages that
- * continue a pending conversation (e.g. across the nightly cut-off) extend it,
+ * continue a pending conversation (e.g. across a scheduled cut-off) extend it,
  * keeping any review already done on it.
  */
 export function importBundle(v: Vault, bundle: CaptureBundle, asOf: ISODate, now: string): { vault: Vault; summary: ImportSummary } {
@@ -187,8 +187,8 @@ export interface BatchImportSummary {
 }
 
 /**
- * Imports several nightly bundles at once, oldest first, so a conversation that
- * runs across a nightly cut-off is stitched together in order.
+ * Imports several capture bundles at once, oldest first, so a conversation that
+ * runs across a scheduled cut-off is stitched together in order.
  */
 export function importBundles(v: Vault, bundles: CaptureBundle[], asOf: ISODate, now: string): { vault: Vault; summary: BatchImportSummary } {
   const before = new Set(captureOf(v).pending);

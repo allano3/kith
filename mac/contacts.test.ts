@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { friendIndex, resolveFriends, type CaptureConfig } from './capture.ts';
+import { DEFAULT_SCHEDULE, friendIndex, resolveFriends, type CaptureConfig } from './capture.ts';
 import { ContactMatchError, handleKey, resolveContact } from './contacts.ts';
 import { writeContactsDb } from './fixtures.ts';
 
@@ -75,6 +75,7 @@ describe('resolveContact', () => {
       includeGroupChats: false,
       outputDir: '/tmp',
       retentionDays: 14,
+      schedule: DEFAULT_SCHEDULE,
     };
     const [sam, sarah, tom] = resolveFriends(config, dir);
     expect(sam).toEqual({ name: 'Sam', handles: ['+44 7700 900123'], source: { kind: 'config' } });
