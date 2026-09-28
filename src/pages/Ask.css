@@ -1,0 +1,14 @@
+.ask-label { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+.ask-note { font-size: 13px; }
+.ask-input { display: flex; gap: 10px; }
+.ask-input input { flex: 1; }
+.ask-examples .choice { text-align: left; }
+.ask-answer { align-self: stretch; }
+.ask-people { margin-top: 14px; font-size: 13px; }
+.ask-sent { margin-top: 12px; font-size: 13px; color: var(--ink-2); }
+.ask-sent summary { cursor: pointer; }
+.ask-packet {
+  max-height: 320px; overflow: auto; margin: 8px 0 0; padding: 12px 14px;
+  background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; color: var(--ink);
+}

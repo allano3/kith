@@ -1,0 +1,46 @@
+/* Mobile-first: large tap targets, 16px inputs so iOS doesn't zoom on focus. */
+.inbox input[type='password'],
+.inbox select,
+.inbox textarea { font-size: 16px; }
+.inbox .btn { min-height: 44px; justify-content: center; }
+.inbox .choice { min-height: 40px; padding: 8px 14px; font-size: 14.5px; }
+.inbox .checkbox { min-height: 44px; font-size: 15px; }
+.inbox .checkbox input { width: 20px; height: 20px; flex: none; }
+
+.inbox .visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.inbox-file { position: relative; overflow: hidden; }
+.inbox-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 16px; }
+.inbox-file.is-disabled { opacity: 0.5; pointer-events: none; }
+.inbox-status { font-size: 14.5px; color: var(--tone, var(--ink-2)); }
+.inbox-note { font-size: 13.5px; }
+
+.inbox-conv > header h2 { font-size: 20px; }
+
+.inbox-thread { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.inbox-bubble {
+  max-width: 82%; padding: 9px 13px; border-radius: 18px; font-size: 15px; line-height: 1.4;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.inbox-bubble.from-them { align-self: flex-start; background: var(--paper-2); color: var(--ink); border-bottom-left-radius: 6px; }
+.inbox-bubble.from-me { align-self: flex-end; background: var(--sage-bg); color: var(--ink); border-bottom-right-radius: 6px; }
+
+.inbox-suggestion { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px; background: var(--card); }
+.inbox-suggestion h4 { font-size: 16px; }
+.inbox-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.inbox-fieldset > legend { padding: 0; margin-bottom: 8px; font-size: 13.5px; font-weight: 500; color: var(--ink-2); }
+
+.inbox-done { margin: 0; padding-left: 18px; font-size: 13.5px; }
+.inbox-picker { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.inbox-picker .field { flex: 1 1 220px; }
+
+.inbox-steps { text-align: left; max-width: 520px; margin: 12px auto 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.inbox-settings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14.5px; }
+
+@media (max-width: 560px) {
+  .inbox-actions .btn, .inbox-suggestion .row .btn { flex: 1 1 auto; }
+  .inbox-bubble { max-width: 90%; }
+}

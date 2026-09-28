@@ -1,0 +1,45 @@
+.profile-head { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.profile-head-main { flex: 1; min-width: 260px; }
+.profile-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 22px; margin: 6px 0 0; }
+.profile-facts dt,
+.profile-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); font-weight: 600; }
+.profile-facts dd { margin: 4px 0 0; font-size: 14px; }
+
+.profile-list { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); }
+.profile-list li + li { margin-top: 4px; }
+.profile-list-lg { font-size: 15px; color: var(--ink); }
+.profile-suggest { border-top: 1px solid var(--line); padding-top: 12px; }
+.profile-notes { white-space: pre-wrap; }
+.profile-outcome { max-width: 320px; }
+.profile-table-wrap { overflow-x: auto; }
+.profile-table-wrap td select,
+.profile-table-wrap td input { min-width: 130px; padding: 6px 10px; font-size: 13.5px; }
+
+.flag-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.flag-row:first-child { border-top: 0; }
+
+.pattern-group + .pattern-group { margin-top: 24px; }
+.pattern-group > h3 { margin-bottom: 12px; font-size: 15px; color: var(--ink-2); }
+
+.commit-row { padding: 14px 0; border-top: 1px solid var(--line); }
+.commit-row:first-child { border-top: 0; padding-top: 2px; }
+
+.tl-title { font-weight: 600; color: var(--ink); }
+.tl-text { margin-top: 3px; }
+.tl-chips { margin-top: 7px; gap: 6px; }
+.tl-quiet {
+  margin: 6px 0 12px; padding: 6px 12px; border: 1px dashed var(--line-2); border-radius: var(--radius-sm);
+  color: var(--dusk); font-family: var(--serif); font-style: italic; font-size: 13.5px; background: var(--paper);
+}
+
+.memory { border-left: 3px solid var(--line-2); padding-left: 14px; }
+
+.profile-dialog {
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; max-width: 480px;
+  background: var(--card); color: var(--ink); box-shadow: var(--shadow);
+}
+.profile-dialog::backdrop { background: rgba(42, 41, 38, 0.3); }
+
+@media (max-width: 860px) {
+  .profile-facts { grid-template-columns: 1fr; }
+}

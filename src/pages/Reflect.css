@@ -1,0 +1,36 @@
+.rf-lede { font-size: 18px; line-height: 1.45; }
+.card h2 + .rf-lede { margin-top: 4px; }
+.rf-explain { font-size: 14px; margin-top: 6px; max-width: 680px; }
+.rf-small { font-size: 13px; }
+.rf-none { font-size: 14px; }
+.rf-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); font-weight: 600; }
+
+.rf-stats { margin-top: 18px; gap: 16px 24px; }
+.rf-stats .pattern + .pattern { margin-top: 0; }
+.rf-mirror-lists { margin-top: 26px; gap: 18px 28px; }
+.rf-mirror-lists .stack { gap: 6px; }
+.rf-prompts { margin-top: 22px; gap: 6px; }
+
+.rf-list { list-style: none; margin: 0; padding: 0; }
+.rf-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rf-bullets { margin: 0; padding-left: 18px; font-size: 14px; }
+.rf-bullets li + li { margin-top: 4px; }
+
+.rf-values-current, .rf-values-add { gap: 6px; }
+.rf-custom { min-width: 220px; }
+.rf-values-form { align-items: flex-end; }
+.rf-values-table { margin-top: 10px; }
+.rf-values-table th { width: 180px; color: var(--ink); font-size: 14px; border-top: 1px solid var(--line); }
+.rf-values-table tr:first-child th, .rf-values-table tr:first-child td { border-top: 0; }
+.rf-growth { margin-top: 22px; gap: 6px; }
+.rf-tension { margin-top: 20px; gap: 8px; }
+
+.rf-anchor { scroll-margin-top: 24px; }
+.rf-invest-row { align-items: flex-start; }
+.rf-invest-actions { flex: none; gap: 4px; }
+.rf-complete { margin-top: 16px; }
+
+.rf-questions { margin: 8px 0 0; display: flex; flex-direction: column; gap: 16px; }
+.rf-questions dt { font-size: 16.5px; }
+.rf-questions dd { margin: 4px 0 0; font-size: 14px; color: var(--ink-2); }
+.rf-trends { gap: 2px; }
